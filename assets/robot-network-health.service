@@ -1,0 +1,11 @@
+[Unit]
+Description=Check robot IPv4 Internet uplinks with hysteresis
+After=NetworkManager.service robot-chassis-access.service
+Wants=NetworkManager.service
+ConditionPathExists=/etc/robot-network/site.json
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/robot-network/health.py
+TimeoutStartSec=40
+ProtectHome=yes
+ProtectSystem=full

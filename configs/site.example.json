@@ -1,0 +1,9 @@
+{
+  "robot": {"hosts": ["192.168.1.100"], "username": "robot", "port": 22, "host_key_sha256": "REPLACE_WITH_VERIFIED_SHA256_FINGERPRINT"},
+  "chassis_router": {"host": "192.168.10.1", "username": "root", "host_key_sha256": "REPLACE_WITH_VERIFIED_SHA256_FINGERPRINT"},
+  "fiveg_router": {"url": "http://192.168.66.1", "username": "root"},
+  "interfaces": {"cellular": "eth0", "chassis": "eth1", "wifi": "wlan0", "secondary_wifi": "p2p0"},
+  "network": {"cellular_address": "192.168.66.10/24", "cellular_gateway": "192.168.66.1", "debug_cidr": "192.168.66.0/24", "chassis_address": "192.168.10.200/24", "chassis_cidr": "192.168.10.0/24", "chassis_controller": "192.168.10.10", "chassis_http_port": 9001, "chassis_ws_port": 9090, "dns": ["114.114.114.114", "223.5.5.5"]},
+  "policy": {"preferred": "wifi", "wifi_metric": 100, "cellular_metric": 300, "secondary_metric": 900, "health_interval_seconds": 10, "failures_before_switch": 3, "recoveries_before_return": 6, "return_hold_seconds": 120, "health_domains": ["dashscope.aliyuncs.com", "openspeech.bytedance.com"]},
+  "test_client": null
+}

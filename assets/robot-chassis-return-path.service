@@ -1,0 +1,21 @@
+[Unit]
+Description=Symmetric return routing for 5G LAN chassis access
+After=robot-chassis-access.service NetworkManager.service
+BindsTo=robot-chassis-access.service
+PartOf=robot-chassis-access.service
+Wants=robot-chassis-return-path.timer
+ConditionPathExists=/etc/nftables.d/robot-chassis-return-path.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/robot-chassis-return-path start
+ExecReload=/usr/local/sbin/robot-chassis-return-path sync
+ExecStop=/usr/local/sbin/robot-chassis-return-path stop
+ProtectHome=yes
+ProtectSystem=full
+TimeoutStartSec=20
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

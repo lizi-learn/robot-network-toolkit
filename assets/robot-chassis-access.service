@@ -1,0 +1,20 @@
+[Unit]
+Description=Restricted forwarding from 5G debug LAN to robot chassis LAN
+After=local-fs.target systemd-sysctl.service
+Before=network-pre.target
+Wants=network-pre.target
+ConditionPathExists=/etc/nftables.d/robot-chassis-access.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/robot-chassis-access start
+ExecReload=/usr/local/sbin/robot-chassis-access reload
+ExecStop=/usr/local/sbin/robot-chassis-access stop
+ProtectHome=yes
+ProtectSystem=full
+TimeoutStartSec=20
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

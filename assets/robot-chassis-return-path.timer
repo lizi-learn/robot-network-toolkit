@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh chassis return route after network and neighbor changes
+After=robot-chassis-return-path.service
+PartOf=robot-chassis-return-path.service
+
+[Timer]
+OnActiveSec=5s
+OnUnitActiveSec=20s
+AccuracySec=1s
+Unit=robot-chassis-return-path-sync.service

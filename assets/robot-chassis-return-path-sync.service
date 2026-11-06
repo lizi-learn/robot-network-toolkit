@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh 5G gateway neighbor and chassis return route
+After=robot-chassis-return-path.service
+Requisite=robot-chassis-return-path.service
+PartOf=robot-chassis-return-path.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/robot-chassis-return-path sync
+ProtectHome=yes
+ProtectSystem=full
+TimeoutStartSec=15

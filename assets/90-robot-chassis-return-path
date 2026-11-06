@@ -1,0 +1,8 @@
+#!/bin/sh
+CELL_IF=$(/usr/bin/python3 -c 'import json; print(json.load(open("/etc/robot-network/site.json"))["interfaces"]["cellular"])' 2>/dev/null) || exit 0
+[ "${1:-}" = "$CELL_IF" ] || exit 0
+case "${2:-}" in
+ up|dhcp4-change|reapply|down)
+  /bin/systemctl --no-block start robot-chassis-return-path-sync.service
+  ;;
+esac

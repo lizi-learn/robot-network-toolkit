@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+RULES=/etc/nftables.d/robot-chassis-access.nft
+case "${1:-}" in
+    start|reload)
+        batch=$(mktemp /run/robot-chassis-access.XXXXXX)
+        trap 'rm -f "$batch"' EXIT HUP INT TERM
+        if /usr/sbin/nft list table ip robot_chassis_access >/dev/null 2>&1; then
+            printf '%s\n' 'delete table ip robot_chassis_access' > "$batch"
+        fi
+        cat "$RULES" >> "$batch"
+        /usr/sbin/nft --check --file "$batch"
+        /usr/sbin/nft --file "$batch"
+        /usr/sbin/sysctl -q -w net.ipv4.ip_forward=1
+        ;;
+    stop)
+        # Disable routing before removing the restricting forward chain.
+        /usr/sbin/sysctl -q -w net.ipv4.ip_forward=0
+        if /usr/sbin/nft list table ip robot_chassis_access >/dev/null 2>&1; then
+            /usr/sbin/nft delete table ip robot_chassis_access
+        fi
+        ;;
+    *)
+        echo 'Usage: robot-chassis-access {start|reload|stop}' >&2
+        exit 2
+        ;;
+esac

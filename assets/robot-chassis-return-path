@@ -1,0 +1,122 @@
+#!/usr/bin/python3
+"""Keep routed chassis connections symmetric without client configuration."""
+import fcntl
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+CONFIG = json.loads(Path('/etc/robot-network/site.json').read_text())
+CELL_IF = CONFIG['interfaces']['cellular']
+CHASSIS_IF = CONFIG['interfaces']['chassis']
+CELL_IP = CONFIG['network']['cellular_address'].split('/')[0]
+GATEWAY = CONFIG['network']['cellular_gateway']
+DEBUG_CIDR = CONFIG['network']['debug_cidr']
+TABLE = 'robot_chassis_return_path'
+ROUTE_TABLE = '16600'
+PRIORITY = '16600'
+MARK = '0x66000000/0xff000000'
+RULES = Path('/etc/nftables.d/robot-chassis-return-path.nft')
+STATE = Path('/run/robot-chassis-return-path.json')
+
+
+def run(args, *, check=True, data=None):
+    return subprocess.run(args, input=data, text=True, capture_output=True,
+                          check=check, timeout=8)
+
+
+def nft_exists():
+    return run(['nft', 'list', 'table', 'ip', TABLE], check=False).returncode == 0
+
+
+def batch(text):
+    run(['nft', '--check', '--file', '-'], data=text)
+    run(['nft', '--file', '-'], data=text)
+
+
+def ensure_rule():
+    rules = json.loads(run(['ip', '-j', '-4', 'rule', 'show']).stdout)
+    occupied = [r for r in rules if r.get('priority') == int(PRIORITY)]
+    if occupied:
+        if len(occupied) != 1:
+            raise RuntimeError('Policy priority 16600 has multiple owners')
+        r = occupied[0]
+        if not (str(r.get('table')) == ROUTE_TABLE
+                and int(str(r.get('fwmark', '0')), 0) == 0x66000000
+                and int(str(r.get('fwmask', '0')), 0) == 0xff000000):
+            raise RuntimeError('Policy priority 16600 belongs to another rule')
+    else:
+        run(['ip', '-4', 'rule', 'add', 'priority', PRIORITY,
+             'fwmark', MARK, 'table', ROUTE_TABLE])
+
+
+def update_gateway(mac):
+    previous = json.loads(STATE.read_text()) if STATE.exists() else {}
+    listing = run(['nft', 'list', 'set', 'ip', TABLE, 'gateway_macs']).stdout
+    present = sorted(set(re.findall(r'\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b', listing)))
+    expected = [mac] if mac else []
+    if present != expected:
+        text = 'flush set ip ' + TABLE + ' gateway_macs\n'
+        if mac:
+            text += 'add element ip ' + TABLE + ' gateway_macs { ' + mac + ' }\n'
+        batch(text)
+    if previous.get('gateway_mac') != mac or not STATE.exists():
+        STATE.write_text(json.dumps({'gateway_mac': mac, 'gateway': GATEWAY,
+                                     'interface': CELL_IF, 'table': int(ROUTE_TABLE)}) + '\n')
+        print('Gateway return path ' + ('ready, MAC=' + mac if mac else 'waiting for eth0'),
+              flush=True)
+
+
+def sync():
+    if not nft_exists():
+        return
+    ensure_rule()
+    result = run(['ip', '-j', '-4', 'address', 'show', 'dev', CELL_IF], check=False)
+    rows = json.loads(result.stdout or '[]')
+    ready = bool(rows and rows[0].get('operstate') == 'UP' and any(
+        a.get('local') == CELL_IP for a in rows[0].get('addr_info', [])))
+    if not ready:
+        update_gateway(None)
+        return
+    run(['ip', '-4', 'route', 'replace', 'table', ROUTE_TABLE,
+         DEBUG_CIDR, 'via', GATEWAY, 'dev', CELL_IF, 'onlink'])
+    # Bounded LAN-only reachability probe also refreshes ARP after router changes.
+    run(['ping', '-I', CELL_IF, '-c', '1', '-W', '1', GATEWAY], check=False)
+    neighbors = json.loads(run(['ip', '-j', '-4', 'neigh', 'show',
+                               GATEWAY, 'dev', CELL_IF]).stdout)
+    mac = next((n['lladdr'].lower() for n in neighbors
+                if re.fullmatch(r'(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', n.get('lladdr', ''))
+                and not {'FAILED', 'INCOMPLETE'}.intersection(n.get('state', []))), None)
+    update_gateway(mac)
+
+
+def stop():
+    # Remove connection marking before its routing policy.
+    if nft_exists():
+        run(['nft', 'delete', 'table', 'ip', TABLE])
+    run(['ip', '-4', 'rule', 'del', 'priority', PRIORITY, 'fwmark', MARK,
+         'table', ROUTE_TABLE], check=False)
+    run(['ip', '-4', 'route', 'del', 'table', ROUTE_TABLE, DEBUG_CIDR,
+         'via', GATEWAY, 'dev', CELL_IF], check=False)
+    STATE.unlink(missing_ok=True)
+
+
+def main():
+    with open('/run/robot-chassis-return-path.lock', 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        action = sys.argv[1] if len(sys.argv) == 2 else ''
+        if action == 'start':
+            text = ('delete table ip ' + TABLE + '\n' if nft_exists() else '')
+            batch(text + RULES.read_text())
+            sync()
+        elif action == 'sync':
+            sync()
+        elif action == 'stop':
+            stop()
+        else:
+            raise SystemExit('Usage: robot-chassis-return-path {start|sync|stop}')
+
+
+if __name__ == '__main__':
+    main()
