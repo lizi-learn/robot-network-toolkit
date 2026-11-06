@@ -97,6 +97,17 @@ python3 -m unittest discover -s tests -v
 | `robot_network/check.py` | 同一服务器地址的双出口 HTTPS 比较 |
 | `robot_network/chassis_status.py` | 仅调用底盘诊断读取与网口信息服务 |
 | `robot_network/router_web.py` | 5G 路由器只读检查 |
+| `robot_network/benchmark.py` / `summarize.py` | 多窗口双出口配对采样、去标识统计 |
 | `assets/` | systemd、nftables 加载器与对称回程维护 |
+
+需要重新比较两路网络时，运行约 5 分钟的三个采样窗口：
+
+```bash
+./benchmark.sh --config site.local.json --windows 3 --pause 30
+python3 robot_network/summarize.py reports/TRANSACTION-samples.jsonl \
+  --output reports/summary.json
+```
+
+每窗口每平台每出口 120 次服务器 ping，以及两个节点、两轮、每轮 15 次全新 TLS/HTTP 连接；DNS 单独绑定网卡查询。原始报告包含现场信息，汇总器省略地址、MAC 和路由。不要把公共 DNS 不响应 ICMP 误报为互联网完全不可用。
 
 MIT 许可证。此仓库提供可审查的实现与真实经验，实际部署前请核对地址、固件能力和现有转发业务。

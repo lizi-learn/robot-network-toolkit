@@ -163,10 +163,11 @@ def tests(robot,router,c,dest,req,sudo_password,samples,client_password,timer_ac
 
 def main():
     p=argparse.ArgumentParser(description='Robot network configuration and read-only validation')
-    p.add_argument('command',choices=['optimize','test'])
+    p.add_argument('command',choices=['optimize','test','benchmark'])
     p.add_argument('--config',required=True);p.add_argument('--apply',action='store_true')
     p.add_argument('--samples',type=int,default=5);p.add_argument('--skip-fiveg',action='store_true')
     p.add_argument('--exercise-failover',action='store_true',help='Explicitly switch IPv4 egress to 5G then Wi-Fi and restore; may interrupt calls')
+    p.add_argument('--windows',type=int,default=3);p.add_argument('--pause',type=int,default=30)
     p.add_argument('--report-dir',default='reports');args=p.parse_args()
     if args.exercise_failover and args.command!='test':p.error('--exercise-failover is only for test')
     c=validate(json.loads(Path(args.config).read_text()))
@@ -200,7 +201,15 @@ def main():
             result['fiveg']=fiveg_guard(robot,c,dest,fiveg_pw)
             if not result['fiveg']['route_ok'] or not result['fiveg']['reservation_ok']:
                 raise RuntimeError('Configure the documented 5G LAN route/reservation before applying; no device changed')
-        if args.command=='optimize' and args.apply:
+        if args.command=='benchmark':
+            output=dest+'/benchmark.jsonl'
+            result['benchmark_log']=exec_robot(robot,'python3 '+shlex.quote(dest+'/robot_network/benchmark.py')+request_arg+' --output '+shlex.quote(output)+' --windows '+str(args.windows)+' --pause '+str(args.pause),sudo_pw,timeout=1200)
+            local=report_dir/(transaction+'-samples.jsonl')
+            # The root probe intentionally creates a 0600 file; transfer through
+            # the existing sudo channel rather than loosening its permissions.
+            local.write_text(exec_robot(robot,'cat '+shlex.quote(output),sudo_pw,timeout=30));os.chmod(local,0o600)
+            result['samples_file']=str(local)
+        elif args.command=='optimize' and args.apply:
             result['optimization']=json.loads(exec_robot(robot,agent+' apply'+request_arg,sudo_pw))
             robot_applied=result['optimization'].get('changed',False)
             if not router_matches(c,result['router_before']):
